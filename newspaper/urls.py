@@ -312,4 +312,5 @@ def is_abs_url(url):
         r'(?::\d+)?'                                                                          # optional port
         r'(?:/?|[/?]\S+)$', re.IGNORECASE)
 
-    return bool(c_regex.search(url))
+    c_regex = re.compile(regex)
+    return (c_regex.search(url) is not None)
