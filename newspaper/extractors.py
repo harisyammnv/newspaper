@@ -178,17 +178,20 @@ class ContentExtractor(object):
             if len(content) > 0:
                 authors.extend(parse_byline(content))
 
-        return uniqify_list(authors)
+        if len(authors) == 0:
+            match = re.search('writing [bB][yY][\: ].*|[fF]rom[\: ].*', html)
+            try:
+            #    # Don't let zone be too long
+                line = match.group(0)[:100]
+                line = line.replace('writing', '')
+                line = line.replace('editing', '')
+                line = line.strip()
+                line=re.sub('div|class|span', '', line)
+                authors = parse_byline(line)
+            except:
+                pass
 
-        # TODO Method 2: Search raw html for a by-line
-        # match = re.search('By[\: ].*\\n|From[\: ].*\\n', html)
-        # try:
-        #    # Don't let zone be too long
-        #    line = match.group(0)[:100]
-        #    authors = parse_byline(line)
-        # except:
-        #    return [] # Failed to find anything
-        # return authors
+        return uniqify_list(authors)
 
     def get_publishing_date(self, url, doc):
         """3 strategies for publishing date extraction. The strategies
