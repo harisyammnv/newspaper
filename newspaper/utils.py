@@ -141,7 +141,7 @@ def timelimit(timeout):
                         self.error = sys.exc_info()
             c = Dispatch()
             c.join(timeout)
-            if c.isAlive():
+            if c.is_alive():
                 raise TimeoutError()
             if c.error:
                 raise c.error[0](c.error[1])
@@ -168,17 +168,13 @@ def filename_to_domain(filename):
 
 
 def is_ascii(word):
-    """True if a word is only ascii chars
+    """True if a word is only ASCII chars.
+    `word` may be bytes or str.
     """
-    def onlyascii(char):
-        if ord(char) > 127:
-            return ''
-        else:
-            return char
-    for c in word:
-        if not onlyascii(c):
-            return False
-    return True
+    if isinstance(word, bytes):
+        # Bytes can only contain ASCII literal characters
+        return True
+    return all(ord(i) < 128 for i in word)
 
 
 def extract_meta_refresh(html):
@@ -230,12 +226,17 @@ def cache_disk(seconds=(86400 * 5), cache_folder="/tmp"):
                 modified = os.path.getmtime(filepath)
                 age_seconds = time.time() - modified
                 if age_seconds < seconds:
-                    return pickle.load(open(filepath, "rb"))
+                    cache_file = open(filepath, "rb")
+                    content = pickle.load(cache_file)
+                    cache_file.close()
+                    return content
 
             # call the decorated function...
             result = function(*args, **kwargs)
             # ... and save the cached object for next time
-            pickle.dump(result, open(filepath, "wb"))
+            cache_file = open(filepath, "wb")
+            pickle.dump(result, cache_file)
+            cache_file.close()
             return result
         return inner_function
     return do_cache

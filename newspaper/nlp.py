@@ -18,6 +18,7 @@ from . import settings
 ideal = 20.0
 
 stopwords = set()
+NUM_KEYWORDS = 10
 
 def load_stopwords(language):
     """ 
@@ -122,7 +123,7 @@ def keywords(text):
     sorts them in reverse natural order (so descending) by number of
     occurrences.
     """
-    NUM_KEYWORDS = 10
+    
     text = split_words(text)
     # of words before removing blacklist words
     if text:
@@ -157,7 +158,7 @@ def split_sentences(text):
     tokenizer = nltk.data.load('tokenizers/punkt/english.pickle')
 
     sentences = tokenizer.tokenize(text)
-    sentences = [x.replace('\n', '') for x in sentences if len(x) > 10]
+    sentences = [re.sub('[\n ]+', ' ', x) for x in sentences if len(x) > 10]
     return sentences
 
 

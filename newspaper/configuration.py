@@ -54,6 +54,7 @@ class Configuration(object):
         # You may keep the html of just the main article body
         self.keep_article_html = False
 
+        self.keep_authors_format = False
         # Fail for error responses (e.g. 404 page)
         self.http_success_only = True
 
@@ -82,14 +83,14 @@ class Configuration(object):
         return self._language
 
     def del_language(self):
-        raise Exception('wtf are you doing?')
+        raise AttributeError("A language must be associated with the configuration.")
 
     def set_language(self, language):
         """Language setting must be set in this method b/c non-occidental
         (western) languages require a separate stopwords class.
         """
         if not language or len(language) != 2:
-            raise Exception("Your input language must be a 2 char language code, \
+            raise ValueError("Your input language must be a 2 char language code, \
                 for example: english-->en \n and german-->de")
 
         # If explicitly set language, don't use meta

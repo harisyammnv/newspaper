@@ -47,7 +47,7 @@ class DocumentCleaner(object):
             .create("\n", "\n\n")\
             .append("\t")\
             .append("^\\s+$")
-        self.contains_article = './/article|.//*[@id="article"]|.//*[@itemprop="articleBody"]'
+        self.contains_article = './/article|.//*[@id="article"]|.//*[contains(@itemprop,"articleBody")]'
 
     def clean(self, doc_to_clean):
         """Remove chunks of the DOM as specified
@@ -205,7 +205,7 @@ class DocumentCleaner(object):
                 nodes_to_return.append(kid)
 
         # flush out anything still remaining
-        if(len(replacement_text) > 0):
+        if len(replacement_text) > 0:
             new_node = self.get_flushed_buffer(''.join(replacement_text), doc)
             nodes_to_return.append(new_node)
             replacement_text = []

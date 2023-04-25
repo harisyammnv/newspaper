@@ -23,6 +23,9 @@ from urllib.parse import urljoin, urlparse, urlunparse
 
 from . import urls
 from .utils import StringReplacement, StringSplitter
+from bs4 import BeautifulSoup
+import json
+from decimal import InvalidOperation
 
 log = logging.getLogger(__name__)
 
@@ -69,7 +72,7 @@ class ContentExtractor(object):
             self.stopwords_class = \
                 self.config.get_stopwords_class(meta_lang)
 
-    def get_authors(self, doc):
+    def get_authors(self, html, doc):
         """Fetch the authors of the article, return as a list
         Only works for english articles
         """
@@ -88,7 +91,10 @@ class ContentExtractor(object):
                 if item.lower() in seen:
                     continue
                 seen[item.lower()] = 1
-                result.append(item.title())
+                if self.config.keep_authors_format:
+                    result.append(item)
+                else: 
+                    result.append(item.title())
             return result
 
         def parse_byline(search_str):
@@ -135,10 +141,25 @@ class ContentExtractor(object):
 
         # Try 1: Search popular author tags for authors
 
-        ATTRS = ['name', 'rel', 'itemprop', 'class', 'id']
-        VALS = ['author', 'byline', 'dc.creator', 'byl']
+        ATTRS = ['property', 'name', 'rel', 'itemprop', 'class', 'id']
+        VALS = ['article:author', 'article:author_name', 'parsely-author',
+                'sailthru.author', 'citation_author', 'author', 'byline',
+                'dc.creator', 'byl', 'auth-nm lnk', 'mobile-auth-nm lnk', 
+                'auth-nm no-lnk', 'mobile-auth-nm no-lnk', 'publisher flt', 'writing']
+        
+        TAGS = ['meta','div','iframe','a','span','section']
         matches = []
         authors = []
+
+        parsedHTML = BeautifulSoup(html,"lxml")
+        scripts = parsedHTML.find_all('script', type='application/ld+json')
+        for script in scripts:
+            try:
+                data = json.loads(script.text)
+                if (data['author']['name']):
+                    return(data['author']['name'].split())
+            except:
+                pass
 
         for attr in ATTRS:
             for val in VALS:
@@ -148,7 +169,7 @@ class ContentExtractor(object):
 
         for match in matches:
             content = ''
-            if match.tag == 'meta':
+            if match.tag in TAGS:
                 mm = match.xpath('@content')
                 if len(mm) > 0:
                     content = mm[0]
@@ -182,8 +203,10 @@ class ContentExtractor(object):
         def parse_date_str(date_str):
             if date_str:
                 try:
-                    return date_parser(date_str)
-                except (ValueError, OverflowError, AttributeError, TypeError):
+                    # define dictionary for timezones not part of dateutil's defaults
+                    tzinfo = {"ET" : "EST"}
+                    return date_parser(date_str, tzinfos = tzinfo, fuzzy = True)
+                except (ValueError, OverflowError, AttributeError, TypeError, InvalidOperation):
                     # near all parse failures are due to URL dates without a day
                     # specifier, e.g. /2014/04/
                     return None
@@ -206,6 +229,8 @@ class ContentExtractor(object):
              'content': 'datetime'},
             {'attribute': 'property', 'value': 'og:published_time',
              'content': 'content'},
+            {'attribute': 'property', 'value': 'og:regDate',
+             'content': 'content'},
             {'attribute': 'name', 'value': 'article_date_original',
              'content': 'content'},
             {'attribute': 'name', 'value': 'publication_date',
@@ -218,6 +243,16 @@ class ContentExtractor(object):
              'content': 'datetime'},
             {'attribute': 'name', 'value': 'publish_date',
              'content': 'content'},
+            {'attribute': 'itemprop', 'value': 'datePublished',
+             'content': 'content'},
+            {'attribute': 'name', 'value': 'publish-date',
+             'content': 'content'},
+            {'attribute': 'name', 'value': 'created-date',
+             'content': 'content'},
+            {'attribute': 'name', 'value': 'modified-date',
+             'content': 'content'},
+            {'attribute': 'name', 'value': 'Last-Modified',
+             'content': 'content'},
         ]
         for known_meta_tag in PUBLISH_DATE_TAGS:
             meta_tags = self.parser.getElementsByTag(
@@ -227,11 +262,31 @@ class ContentExtractor(object):
             if meta_tags:
                 date_str = self.parser.getAttribute(
                     meta_tags[0],
-                    known_meta_tag['content'])
+                    known_meta_tag['content'])\
+                or self.parser.getText(meta_tags[0])
                 datetime_obj = parse_date_str(date_str)
                 if datetime_obj:
                     return datetime_obj
+        ATTRS = ['class', 'id'] 
+        VALS = ['date', 'timestamp', 'time', '_3OViwiRtR_PFko9i8o9Mov', 'ra-date-published']
+        matches = []
 
+        for attr in ATTRS:
+            for val in VALS:
+                found = self.parser.getElementsByTag(doc, attr=attr, value=val)
+                matches.extend(found)
+
+        for match in matches:
+            content = ''
+            if match.tag == 'meta':
+                mm = match.xpath('@content')
+                if len(mm) > 0:
+                    content = mm[0]
+            else:
+                content = match.text or ''
+            datetime_object = parse_date_str(content)
+            if datetime_object:
+                return datetime_object
         return None
 
     def get_title(self, doc):
@@ -380,7 +435,7 @@ class ContentExtractor(object):
         """
         total_feed_urls = []
         for category in categories:
-            kwargs = {'attr': 'type', 'value': 'application\/rss\+xml'}
+            kwargs = {'attr': 'type', 'value': 'application/rss+xml'}
             feed_elements = self.parser.getElementsByTag(
                 category.doc, **kwargs)
             feed_urls = [e.get('href') for e in feed_elements if e.get('href')]
@@ -466,7 +521,10 @@ class ContentExtractor(object):
         top_meta_image = try_one or try_two or try_three or try_four
 
         if top_meta_image:
-            return urljoin(article_url, top_meta_image)
+            try:
+                return urljoin(article_url, top_meta_image)
+            except ValueError:
+                pass
         return ''
 
     def get_meta_type(self, doc):
@@ -573,8 +631,14 @@ class ContentExtractor(object):
         img_tags = self.parser.getElementsByTag(doc, **img_kwargs)
         urls = [img_tag.get('src')
                 for img_tag in img_tags if img_tag.get('src')]
-        img_links = set([urljoin(article_url, url)
-                         for url in urls])
+        img_links = set()
+        for url in urls:
+            try:
+                joined_url = urljoin(article_url, url)
+            except ValueError:
+                continue
+            else:
+                img_links.add(joined_url)
         return img_links
 
     def get_first_img_url(self, article_url, top_node):
